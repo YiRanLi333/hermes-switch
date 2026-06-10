@@ -61,6 +61,11 @@ providers:
   custom:existing:
     name: Existing
     model: another-old-model
+custom_providers:
+  - name: keep-me
+    base_url: https://keep.example/v1
+    api_key: keep-key
+    api_mode: chat_completions
 "@ | Set-Content -LiteralPath $configB -Encoding UTF8
 
     Invoke-HermesSwitch -Parameters @{
@@ -75,14 +80,20 @@ providers:
     foreach ($config in @($configA, $configB)) {
         $content = Get-Content -LiteralPath $config -Raw -Encoding UTF8
 
-        Assert-Contains $content "provider: custom" "Provider was not set to custom."
+        Assert-Contains $content "provider: custom:relay" "Provider was not set to named custom provider."
         Assert-Contains $content "default: gpt-5.5" "Model was not set."
-        Assert-Contains $content "base_url: https://relay.example/v1" "Base URL was not normalized."
-        Assert-Contains $content "api_key: test-relay-key" "API key was not written."
         Assert-Contains $content "custom_providers:" "custom_providers block was not written."
+        Assert-Contains $content "  - name: relay" "Named custom provider entry was not written."
+        Assert-Contains $content "    base_url: https://relay.example/v1" "Base URL was not normalized in custom provider."
+        Assert-Contains $content "    api_key: test-relay-key" "API key was not written in custom provider."
         Assert-Contains $content "      reasoning_effort: xhigh" "custom provider reasoning effort was not written."
         Assert-Contains $content "  reasoning_effort: xhigh" "agent.reasoning_effort was not set."
-        Assert-NotContains $content "custom:existing" "Stale custom provider block was not removed."
+
+        if ($config -eq $configB) {
+            Assert-Contains $content "custom:existing:" "Unrelated providers block should be preserved."
+            Assert-Contains $content "  - name: keep-me" "Unrelated custom provider should be preserved."
+            Assert-NotContains $content "providers: {}" "Script should not wipe existing providers to an empty map."
+        }
 
         $backup = Get-ChildItem -LiteralPath (Split-Path -Parent $config) -Filter ((Split-Path -Leaf $config) + ".bak-*") | Select-Object -First 1
         if (-not $backup) {
@@ -95,6 +106,21 @@ providers:
     Assert-Contains $status "base_url: https://relay.example/v1" "Status did not show base_url."
     Assert-Contains $status "api_key : <set>" "Status did not redact key."
     Assert-NotContains $status "test-relay-key" "Status leaked the API key."
+
+    Invoke-HermesSwitch -Parameters @{
+        Key = "rotated-relay-key"
+        ConfigPath = @($configA)
+        NoPrompt = $true
+    } | Out-Null
+    $rotated = Get-Content -LiteralPath $configA -Raw -Encoding UTF8
+    Assert-Contains $rotated "provider: custom:relay" "Existing named provider was not preserved during key rotation."
+    Assert-Contains $rotated "default: gpt-5.5" "Existing model was not inferred during key rotation."
+    Assert-Contains $rotated "base_url: https://relay.example/v1" "Existing base URL was not inferred during key rotation."
+    Assert-Contains $rotated "api_key: rotated-relay-key" "New API key was not written during key rotation."
+    $relayEntryCount = ([regex]::Matches($rotated, "(?m)^[ \t]*-[ \t]+name:[ \t]*relay[ \t]*$")).Count
+    if ($relayEntryCount -ne 1) {
+        throw "Expected exactly one relay custom provider entry after key rotation, found $relayEntryCount. Actual:`n$rotated"
+    }
 
     $beforeDryRun = Get-Content -LiteralPath $configA -Raw -Encoding UTF8
     $dryRun = Invoke-HermesSwitch -Parameters @{

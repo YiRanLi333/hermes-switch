@@ -70,6 +70,17 @@ function Get-TopLevelBlock {
     return ""
 }
 
+function Get-TopLevelBlockMatch {
+    param(
+        [string]$Content,
+        [string]$Name
+    )
+
+    $escaped = [regex]::Escape($Name)
+    $pattern = '(?m)^' + $escaped + '[ \t]*:\r?\n(?:^[ \t]+.*(?:\r?\n|$)|^[ \t]*$(?:\r?\n|$))*'
+    return [regex]::Match($Content, $pattern)
+}
+
 function Get-ModelValue {
     param(
         [string]$Block,
@@ -100,6 +111,57 @@ function Get-ConfigValue {
     return Get-ModelValue -Block $block -Name $ValueName
 }
 
+function Get-CustomProviderEntryBlock {
+    param(
+        [string]$CustomProvidersBlock,
+        [string]$CustomProviderName
+    )
+
+    if (-not $CustomProvidersBlock) {
+        return ""
+    }
+
+    $namePattern = [regex]::Escape($CustomProviderName)
+    $entryPattern = '(?ms)^[ \t]*-[ \t]+name:[ \t]*[''"]?' + $namePattern + '[''"]?[ \t]*(?:\r?\n(?!(?:[ \t]*-[ \t]+name:)|\z).*)*'
+    $match = [regex]::Match($CustomProvidersBlock, $entryPattern)
+    if ($match.Success) {
+        return $match.Value
+    }
+
+    return ""
+}
+
+function Get-NestedYamlValue {
+    param(
+        [string]$Block,
+        [string]$Name
+    )
+
+    if (-not $Block) {
+        return ""
+    }
+
+    $escaped = [regex]::Escape($Name)
+    $match = [regex]::Match($Block, "(?m)^[ \t]+$escaped[ \t]*:[ \t]*(.*?)[ \t]*$")
+    if (-not $match.Success) {
+        return ""
+    }
+
+    return $match.Groups[1].Value.Trim(" `"'")
+}
+
+function Get-CustomProviderValue {
+    param(
+        [string]$Content,
+        [string]$CustomProviderName,
+        [string]$ValueName
+    )
+
+    $block = Get-TopLevelBlock -Content $Content -Name "custom_providers"
+    $entry = Get-CustomProviderEntryBlock -CustomProvidersBlock $block -CustomProviderName $CustomProviderName
+    return Get-NestedYamlValue -Block $entry -Name $ValueName
+}
+
 function Get-ConfigHint {
     param([string[]]$Paths)
 
@@ -124,6 +186,14 @@ function Get-ConfigHint {
         $model = Get-ModelValue -Block $block -Name "default"
         $baseUrl = Get-ModelValue -Block $block -Name "base_url"
         $isCustom = $provider -like "custom*"
+
+        if ($provider -like "custom:*") {
+            $providerName = ($provider -replace "^custom:", "").Trim()
+            $customBaseUrl = Get-CustomProviderValue -Content $content -CustomProviderName $providerName -ValueName "base_url"
+            if ($customBaseUrl) {
+                $baseUrl = $customBaseUrl
+            }
+        }
 
         if (-not $fallback.Model -and $model) {
             $fallback.Model = $model
@@ -183,6 +253,21 @@ function Normalize-ProviderName {
 function New-ModelBlock {
     param(
         [string]$ModelName,
+        [string]$CustomProviderName
+    )
+
+    return @"
+model:
+  provider: custom:$CustomProviderName
+  default: $ModelName
+  api_mode: chat_completions
+
+"@
+}
+
+function New-CustomProviderEntry {
+    param(
+        [string]$ModelName,
         [string]$RelayBaseUrl,
         [string]$ApiKey,
         [string]$Effort,
@@ -190,23 +275,38 @@ function New-ModelBlock {
     )
 
     return @"
-model:
-  provider: custom
-  default: $ModelName
-  base_url: $RelayBaseUrl
-  api_mode: chat_completions
-  api_key: $ApiKey
-providers: {}
-fallback_providers: []
-custom_providers:
   - name: $CustomProviderName
     base_url: $RelayBaseUrl
+    api_key: $ApiKey
     model: $ModelName
     api_mode: chat_completions
     extra_body:
       reasoning_effort: $Effort
-
 "@
+}
+
+function Upsert-CustomProviderEntry {
+    param(
+        [string]$Content,
+        [string]$Entry,
+        [string]$CustomProviderName
+    )
+
+    $blockMatch = Get-TopLevelBlockMatch -Content $Content -Name "custom_providers"
+    if (-not $blockMatch.Success) {
+        return $Content.TrimEnd() + [Environment]::NewLine + "custom_providers:" + [Environment]::NewLine + $Entry + [Environment]::NewLine
+    }
+
+    $block = $blockMatch.Value
+    $namePattern = [regex]::Escape($CustomProviderName)
+    $entryPattern = '(?ms)^[ \t]*-[ \t]+name:[ \t]*[''"]?' + $namePattern + '[''"]?[ \t]*(?:\r?\n(?!(?:[ \t]*-[ \t]+name:)|\z).*)*'
+    $newBlock = [regex]::Replace($block, $entryPattern, "", 1).TrimEnd()
+    if (-not $newBlock.Trim()) {
+        $newBlock = "custom_providers:"
+    }
+    $newBlock = $newBlock + [Environment]::NewLine + $Entry + [Environment]::NewLine
+
+    return $Content.Remove($blockMatch.Index, $blockMatch.Length).Insert($blockMatch.Index, $newBlock)
 }
 
 function Set-AgentReasoningEffort {
@@ -249,8 +349,9 @@ function Update-HermesConfig {
     }
 
     $content = Get-Content -LiteralPath $Path -Raw -Encoding UTF8
-    $newBlock = New-ModelBlock -ModelName $ModelName -RelayBaseUrl $RelayBaseUrl -ApiKey $ApiKey -Effort $Effort -CustomProviderName $CustomProviderName
-    $match = [regex]::Match($content, '(?m)^model:\r?\n(?:^[ \t]+.*(?:\r?\n|$)|^[ \t]*$(?:\r?\n|$))*(?:^providers:.*(?:\r?\n|$)(?:^[ \t]+.*(?:\r?\n|$)|^[ \t]*$(?:\r?\n|$))*)?(?:^fallback_providers:.*(?:\r?\n|$)(?:^[ \t]+.*(?:\r?\n|$)|^[ \t]*$(?:\r?\n|$))*)?(?:^custom_providers:\r?\n(?:^[ \t]+.*(?:\r?\n|$)|^[ \t]*$(?:\r?\n|$))*)?')
+    $newBlock = New-ModelBlock -ModelName $ModelName -CustomProviderName $CustomProviderName
+    $customEntry = New-CustomProviderEntry -ModelName $ModelName -RelayBaseUrl $RelayBaseUrl -ApiKey $ApiKey -Effort $Effort -CustomProviderName $CustomProviderName
+    $match = Get-TopLevelBlockMatch -Content $content -Name "model"
 
     if ($match.Success) {
         $updated = $content.Remove($match.Index, $match.Length).Insert($match.Index, $newBlock)
@@ -259,6 +360,7 @@ function Update-HermesConfig {
         $updated = $newBlock + [Environment]::NewLine + $content
     }
 
+    $updated = Upsert-CustomProviderEntry -Content $updated -Entry $customEntry -CustomProviderName $CustomProviderName
     $updated = Set-AgentReasoningEffort -Content $updated -Effort $Effort
 
     if ($Preview) {
@@ -291,6 +393,21 @@ function Show-HermesStatus {
         $relayBaseUrl = Get-ConfigValue -Content $content -BlockName "model" -ValueName "base_url"
         $apiMode = Get-ConfigValue -Content $content -BlockName "model" -ValueName "api_mode"
         $apiKey = Get-ConfigValue -Content $content -BlockName "model" -ValueName "api_key"
+        if ($provider -like "custom:*") {
+            $providerName = ($provider -replace "^custom:", "").Trim()
+            $customBaseUrl = Get-CustomProviderValue -Content $content -CustomProviderName $providerName -ValueName "base_url"
+            $customApiMode = Get-CustomProviderValue -Content $content -CustomProviderName $providerName -ValueName "api_mode"
+            $customApiKey = Get-CustomProviderValue -Content $content -CustomProviderName $providerName -ValueName "api_key"
+            if ($customBaseUrl) {
+                $relayBaseUrl = $customBaseUrl
+            }
+            if ($customApiMode) {
+                $apiMode = $customApiMode
+            }
+            if ($customApiKey) {
+                $apiKey = $customApiKey
+            }
+        }
         $effort = Get-ConfigValue -Content $content -BlockName "agent" -ValueName "reasoning_effort"
 
         Write-Output "Path    : $path"

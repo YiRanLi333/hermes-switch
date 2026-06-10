@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.1
+
+- Make the main README Chinese-first.
+- Move English documentation to `docs/README.en.md`.
+- Switch generated Hermes config to named custom provider style (`custom:relay`).
+- Preserve unrelated `providers` and `custom_providers` entries while updating the managed relay entry.
+- Add key-rotation test coverage for existing named custom provider configs.
+
 ## 0.1.0
 
 - Initial open-source release.

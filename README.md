@@ -1,43 +1,49 @@
 # Hermes Switch
 
-一个给 Hermes Desktop 用户使用的自定义中转站配置切换工具。它会把你的 OpenAI-compatible URL、API key、模型名和 reasoning effort 写入 Hermes 的 `config.yaml`，并自动备份旧配置。
+Hermes Switch 是一个给 **Hermes Desktop** 用户使用的自定义中转站配置切换工具。它可以把你的 OpenAI-compatible URL、API Key、模型名和 reasoning effort 写入 Hermes 的 `config.yaml`，适合经常更换中转站 Key、模型或接口地址的用户。
 
-This is a small PowerShell utility for Hermes Desktop users who connect through a custom OpenAI-compatible relay, proxy, or New API endpoint.
+[English documentation](docs/README.en.md)
 
-## Features
+## 功能
 
-- Interactive mode for URL, key, and model input
-- One-command non-interactive mode for scripts
-- Updates common Hermes Desktop config locations automatically
-- Creates timestamped backups before writing
-- Redacts API keys in terminal output
-- Supports `none`, `minimal`, `low`, `medium`, `high`, and `xhigh` reasoning effort
-- Writes both `agent.reasoning_effort` and `custom_providers.extra_body.reasoning_effort`
-- Supports `-DryRun` preview and `-Status` inspection
+- 交互式输入 URL、Key、模型名
+- 支持命令行一键切换，方便写进脚本
+- 自动查找常见 Hermes Desktop 配置路径
+- 写入前自动生成时间戳备份
+- 终端输出永远隐藏 API Key
+- 支持 `none`、`minimal`、`low`、`medium`、`high`、`xhigh`
+- 同时写入 `agent.reasoning_effort` 和 `custom_providers.extra_body.reasoning_effort`
+- 使用命名 custom provider，例如 `custom:relay`
+- 支持 `-Status` 查看当前配置
+- 支持 `-DryRun` 预览，不改文件
 
-## Requirements
+## 快速开始
 
-- Windows PowerShell 5.1 or PowerShell 7+
-- Hermes Desktop already launched at least once
-- A custom OpenAI-compatible endpoint, usually ending with `/v1`
-
-## Quick Start
-
-Download or clone this repo, then run:
+下载或克隆本仓库后，在 PowerShell 里运行：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\hermes-switch.ps1
 ```
 
-The script will ask for:
+脚本会依次询问：
 
-- API key
-- model name, for example `gpt-5.5`
-- base URL, for example `https://example.com/v1`
+- API Key
+- 模型名，例如 `gpt-5.5`
+- Base URL，例如 `https://example.com/v1`
 
-After it finishes, restart Hermes Desktop or start a new Hermes session.
+运行完成后，重启 Hermes Desktop，或者新建一个 Hermes 会话。
 
-## One Command
+## Windows 双击使用
+
+直接双击：
+
+```text
+hermes-switch.cmd
+```
+
+它会打开交互式 PowerShell，并在结束时暂停，方便你看结果。
+
+## 一条命令切换
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\hermes-switch.ps1 `
@@ -48,7 +54,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\hermes-switch.ps1 `
   -NoPrompt
 ```
 
-For maximum reasoning effort:
+如果要使用最高 reasoning effort：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\hermes-switch.ps1 `
@@ -59,25 +65,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\hermes-switch.ps1 `
   -NoPrompt
 ```
 
-## Double Click
-
-On Windows, double-click:
-
-```text
-hermes-switch.cmd
-```
-
-This opens the interactive PowerShell script and pauses at the end so you can read the result.
-
-## Check Current Config
+## 查看当前配置
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\hermes-switch.ps1 -Status
 ```
 
-The key is never printed. You will see `<set>` or `<empty>`.
+输出会显示 `api_key : <set>` 或 `api_key : <empty>`，不会打印真实 Key。
 
-## Preview Without Writing
+## 预览但不写入
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\hermes-switch.ps1 `
@@ -89,17 +85,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\hermes-switch.ps1 `
   -DryRun
 ```
 
-## Config Paths
+## 默认配置路径
 
-By default, the script checks common Hermes locations:
+脚本会自动检查这些位置：
 
 - `%APPDATA%\cn.org.hermesagent.desktop\runtime\hermes-home\config.yaml`
 - `%LOCALAPPDATA%\hermes\config.yaml`
 - `%USERPROFILE%\.hermes\config.yaml`
 - `~/.hermes/config.yaml`
-- macOS/Linux-style Hermes Desktop runtime paths, when present
+- macOS/Linux 风格的 Hermes Desktop runtime 路径，如果存在
 
-You can target a file manually:
+也可以手动指定：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\hermes-switch.ps1 `
@@ -110,22 +106,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\hermes-switch.ps1 `
   -NoPrompt
 ```
 
-## What It Writes
+## 写入的配置格式
 
-The main generated block looks like this:
+Hermes Switch 使用命名 custom provider。核心结构如下：
 
 ```yaml
 model:
-  provider: custom
+  provider: custom:relay
   default: gpt-5.5
-  base_url: https://example.com/v1
   api_mode: chat_completions
-  api_key: YOUR_API_KEY
-providers: {}
-fallback_providers: []
+
 custom_providers:
   - name: relay
     base_url: https://example.com/v1
+    api_key: YOUR_API_KEY
     model: gpt-5.5
     api_mode: chat_completions
     extra_body:
@@ -135,33 +129,43 @@ agent:
   reasoning_effort: high
 ```
 
-The `custom_providers.extra_body.reasoning_effort` line matters for many OpenAI-compatible relays because Hermes' generic `custom` provider may not otherwise forward the reasoning effort to your relay.
+这样写的好处是：
 
-## Restore a Backup
+- `model.provider` 明确指向 `custom:relay`
+- URL 和 Key 都在对应的 `custom_providers` 条目里
+- 不会依赖旧的裸 `provider: custom` 推断逻辑
+- `extra_body.reasoning_effort` 会随请求发给 OpenAI-compatible 中转站
 
-Every write creates a backup next to the config:
+很多中转站只看请求体里的 `reasoning_effort`，只改 `agent.reasoning_effort` 可能会让 Hermes 界面显示 high/xhigh，但实际请求仍然像 medium。这个工具会两边都写。
+
+## 备份和恢复
+
+每次写入都会在原配置旁边生成备份：
 
 ```text
 config.yaml.bak-YYYYMMDD-HHMMSS
 ```
 
-To restore, close Hermes Desktop and copy the backup over `config.yaml`.
+恢复方法：
 
-## Testing
+1. 关闭 Hermes Desktop
+2. 找到对应 `.bak-*` 文件
+3. 复制覆盖回 `config.yaml`
+4. 重新打开 Hermes Desktop
 
-Run:
+## 测试
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\hermes-switch.test.ps1
 ```
 
-## Security Notes
+## 安全提醒
 
-- Do not commit real API keys.
-- Prefer passing keys interactively when possible.
-- Terminal output redacts keys, but `config.yaml` necessarily stores the key because Hermes needs it.
-- Backup files also contain the key that existed at the time of backup. Treat them as secrets.
+- 不要把真实 API Key 提交到 GitHub
+- 终端输出会隐藏 Key，但 `config.yaml` 必须保存 Key，Hermes 才能调用你的中转站
+- 自动生成的备份文件也可能包含旧 Key，请当作敏感文件处理
+- 如果你的 Key 经常变化，直接重新运行本工具即可
 
-## License
+## 许可证
 
 MIT
