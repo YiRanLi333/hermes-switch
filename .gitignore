@@ -1,0 +1,15 @@
+# Secrets and local config
+*.env
+.env
+config.yaml
+config.yaml.bak-*
+*.bak-*
+
+# PowerShell/editor noise
+*.ps1xml
+.vscode/
+.idea/
+
+# OS noise
+Thumbs.db
+.DS_Store
