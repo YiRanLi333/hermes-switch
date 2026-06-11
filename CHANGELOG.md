@@ -7,6 +7,7 @@
 - Switch generated Hermes config to named custom provider style (`custom:relay`).
 - Preserve unrelated `providers` and `custom_providers` entries while updating the managed relay entry.
 - Add key-rotation test coverage for existing named custom provider configs.
+- Clarify first-run instructions so users clone or download the script before running it.
 
 ## 0.1.0
 

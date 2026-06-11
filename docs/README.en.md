@@ -19,9 +19,21 @@ It writes the custom URL, API key, model name, and reasoning effort into Hermes'
 
 ## Quick Start
 
+Download the repository first, then enter the repo directory:
+
+```powershell
+cd $env:USERPROFILE\Desktop
+git clone https://github.com/YiRanLi333/hermes-switch.git
+cd hermes-switch
+```
+
+Then run:
+
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\hermes-switch.ps1
 ```
+
+Note: `.\hermes-switch.ps1` means "the script in the current directory". If your shell is still in `C:\WINDOWS\system32` or another folder, PowerShell will not find the file.
 
 The script asks for:
 
@@ -30,6 +42,18 @@ The script asks for:
 - base URL, for example `https://example.com/v1`
 
 Restart Hermes Desktop or start a new Hermes session after the script finishes.
+
+## Download Without Git
+
+If Git is not installed, download only the scripts:
+
+```powershell
+mkdir "$env:USERPROFILE\Desktop\hermes-switch" -Force
+cd "$env:USERPROFILE\Desktop\hermes-switch"
+Invoke-WebRequest "https://raw.githubusercontent.com/YiRanLi333/hermes-switch/main/hermes-switch.ps1" -OutFile ".\hermes-switch.ps1"
+Invoke-WebRequest "https://raw.githubusercontent.com/YiRanLi333/hermes-switch/main/hermes-switch.cmd" -OutFile ".\hermes-switch.cmd"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\hermes-switch.ps1
+```
 
 ## One Command
 

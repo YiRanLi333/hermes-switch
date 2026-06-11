@@ -19,11 +19,21 @@ Hermes Switch 是一个给 **Hermes Desktop** 用户使用的自定义中转站�
 
 ## 快速开始
 
-下载或克隆本仓库后，在 PowerShell 里运行：
+在 PowerShell 里先下载仓库，再进入仓库目录：
+
+```powershell
+cd $env:USERPROFILE\Desktop
+git clone https://github.com/YiRanLi333/hermes-switch.git
+cd hermes-switch
+```
+
+然后运行：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\hermes-switch.ps1
 ```
+
+注意：`.\hermes-switch.ps1` 里的 `.\` 表示“当前目录”。如果你还在 `C:\WINDOWS\system32` 或别的目录，PowerShell 会找不到这个脚本。
 
 脚本会依次询问：
 
@@ -32,6 +42,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\hermes-switch.ps1
 - Base URL，例如 `https://example.com/v1`
 
 运行完成后，重启 Hermes Desktop，或者新建一个 Hermes 会话。
+
+## 不安装 Git，直接下载脚本
+
+如果电脑没有 Git，也可以只下载脚本：
+
+```powershell
+mkdir "$env:USERPROFILE\Desktop\hermes-switch" -Force
+cd "$env:USERPROFILE\Desktop\hermes-switch"
+Invoke-WebRequest "https://raw.githubusercontent.com/YiRanLi333/hermes-switch/main/hermes-switch.ps1" -OutFile ".\hermes-switch.ps1"
+Invoke-WebRequest "https://raw.githubusercontent.com/YiRanLi333/hermes-switch/main/hermes-switch.cmd" -OutFile ".\hermes-switch.cmd"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\hermes-switch.ps1
+```
 
 ## Windows 双击使用
 
